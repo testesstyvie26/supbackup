@@ -19,7 +19,7 @@ jobs:
         run: |
           pg_dump -4 \
             -h ${{ secrets.DB_HOST }} \
-            -U postgres.postgres.koqkdqrcuplhtjggvora \
+            -U postgres.koqkdqrcuplhtjggvora \
             -d postgres \
             --no-owner \
             --format=custom \
