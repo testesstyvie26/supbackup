@@ -1,61 +1,36 @@
-name: supabase-backup
+name: Supabase Backup
 
 on:
-  push:
-    branches: [main, dev]
-  pull_request:
-    branches: [main, dev]
-  workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *" # Runs every day at midnight
-
-env:
-  BACKUP_ENABLED: true
+    - cron: "0 3 * * *"  # todo dia às 03:00 UTC
+  workflow_dispatch:
 
 jobs:
-  run_db_backup:
+  backup:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-      BACKUP_ENABLED: ${{ vars.BACKUP_ENABLED }} # Repository variable (true or false)
+
     steps:
-      - name: Check if backups are enabled
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run backup
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
-          if [ "$BACKUP_ENABLED" != "true" ]; then
-            echo "Backups are disabled. Exiting workflow."
-            exit 0
-          fi
+          pg_dump -4 \
+            -h ${{ secrets.DB_HOST }} \
+            -U postgres \
+            -d postgres \
+            --no-owner \
+            --format=custom \
+            --file=backup.dump \
+            "sslmode=require"
 
-      - name: Checkout repository
-        if: env.BACKUP_ENABLED == 'true'
-        uses: actions/checkout@v3
+      - name: Compress backup
+        run: gzip backup.dump
 
-      - name: Setup Supabase CLI
-        if: env.BACKUP_ENABLED == 'true'
-        uses: supabase/setup-cli@v1
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          version: latest
-
-      - name: Create timestamp folder
-        if: env.BACKUP_ENABLED == 'true'
-        run: mkdir -p prisma/backups
-
-      - name: Backup roles
-        if: env.BACKUP_ENABLED == 'true'
-        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f prisma/backups/roles.sql --role-only
-
-      - name: Backup schema
-        if: env.BACKUP_ENABLED == 'true'
-        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f prisma/backups/schema.sql
-
-      - name: Backup data
-        if: env.BACKUP_ENABLED == 'true'
-        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f prisma/backups/data.sql --data-only --use-copy
-
-      - name: Commit backups
-        if: env.BACKUP_ENABLED == 'true'
-        uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          commit_message: Supabase backup
+          name: supabase-backup
+          path: backup.dump.gz
